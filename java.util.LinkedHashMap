@@ -1,0 +1,500 @@
+   1: /* LinkedHashMap.java -- a class providing hashtable data structure,
+   2:    mapping Object --> Object, with linked list traversal
+   3:    Copyright (C) 2001, 2002, 2005 Free Software Foundation, Inc.
+   4: 
+   5: This file is part of GNU Classpath.
+   6: 
+   7: GNU Classpath is free software; you can redistribute it and/or modify
+   8: it under the terms of the GNU General Public License as published by
+   9: the Free Software Foundation; either version 2, or (at your option)
+  10: any later version.
+  11: 
+  12: GNU Classpath is distributed in the hope that it will be useful, but
+  13: WITHOUT ANY WARRANTY; without even the implied warranty of
+  14: MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  15: General Public License for more details.
+  16: 
+  17: You should have received a copy of the GNU General Public License
+  18: along with GNU Classpath; see the file COPYING.  If not, write to the
+  19: Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+  20: 02110-1301 USA.
+  21: 
+  22: Linking this library statically or dynamically with other modules is
+  23: making a combined work based on this library.  Thus, the terms and
+  24: conditions of the GNU General Public License cover the whole
+  25: combination.
+  26: 
+  27: As a special exception, the copyright holders of this library give you
+  28: permission to link this library with independent modules to produce an
+  29: executable, regardless of the license terms of these independent
+  30: modules, and to copy and distribute the resulting executable under
+  31: terms of your choice, provided that you also meet, for each linked
+  32: independent module, the terms and conditions of the license of that
+  33: module.  An independent module is a module which is not derived from
+  34: or based on this library.  If you modify this library, you may extend
+  35: this exception to your version of the library, but you are not
+  36: obligated to do so.  If you do not wish to do so, delete this
+  37: exception statement from your version. */
+  38: 
+  39: 
+  40: package java.util;
+  41: 
+  42: /**
+  43:  * This class provides a hashtable-backed implementation of the
+  44:  * Map interface, with predictable traversal order.
+  45:  * <p>
+  46:  *
+  47:  * It uses a hash-bucket approach; that is, hash collisions are handled
+  48:  * by linking the new node off of the pre-existing node (or list of
+  49:  * nodes).  In this manner, techniques such as linear probing (which
+  50:  * can cause primary clustering) and rehashing (which does not fit very
+  51:  * well with Java's method of precomputing hash codes) are avoided.  In
+  52:  * addition, this maintains a doubly-linked list which tracks either
+  53:  * insertion or access order.
+  54:  * <p>
+  55:  *
+  56:  * In insertion order, calling <code>put</code> adds the key to the end of
+  57:  * traversal, unless the key was already in the map; changing traversal order
+  58:  * requires removing and reinserting a key.  On the other hand, in access
+  59:  * order, all calls to <code>put</code> and <code>get</code> cause the
+  60:  * accessed key to move to the end of the traversal list.  Note that any
+  61:  * accesses to the map's contents via its collection views and iterators do
+  62:  * not affect the map's traversal order, since the collection views do not
+  63:  * call <code>put</code> or <code>get</code>.
+  64:  * <p>
+  65:  *
+  66:  * One of the nice features of tracking insertion order is that you can
+  67:  * copy a hashtable, and regardless of the implementation of the original,
+  68:  * produce the same results when iterating over the copy.  This is possible
+  69:  * without needing the overhead of <code>TreeMap</code>.
+  70:  * <p>
+  71:  *
+  72:  * When using this {@link #LinkedHashMap(int, float, boolean) constructor},
+  73:  * you can build an access-order mapping.  This can be used to implement LRU
+  74:  * caches, for example.  By overriding {@link #removeEldestEntry(Map.Entry)},
+  75:  * you can also control the removal of the oldest entry, and thereby do
+  76:  * things like keep the map at a fixed size.
+  77:  * <p>
+  78:  *
+  79:  * Under ideal circumstances (no collisions), LinkedHashMap offers O(1) 
+  80:  * performance on most operations (<code>containsValue()</code> is,
+  81:  * of course, O(n)).  In the worst case (all keys map to the same 
+  82:  * hash code -- very unlikely), most operations are O(n).  Traversal is
+  83:  * faster than in HashMap (proportional to the map size, and not the space
+  84:  * allocated for the map), but other operations may be slower because of the
+  85:  * overhead of the maintaining the traversal order list.
+  86:  * <p>
+  87:  *
+  88:  * LinkedHashMap accepts the null key and null values.  It is not
+  89:  * synchronized, so if you need multi-threaded access, consider using:<br>
+  90:  * <code>Map m = Collections.synchronizedMap(new LinkedHashMap(...));</code>
+  91:  * <p>
+  92:  *
+  93:  * The iterators are <i>fail-fast</i>, meaning that any structural
+  94:  * modification, except for <code>remove()</code> called on the iterator
+  95:  * itself, cause the iterator to throw a
+  96:  * {@link ConcurrentModificationException} rather than exhibit
+  97:  * non-deterministic behavior.
+  98:  *
+  99:  * @author Eric Blake (ebb9@email.byu.edu)
+ 100:  * @author Tom Tromey (tromey@redhat.com)
+ 101:  * @author Andrew John Hughes (gnu_andrew@member.fsf.org)
+ 102:  * @see Object#hashCode()
+ 103:  * @see Collection
+ 104:  * @see Map
+ 105:  * @see HashMap
+ 106:  * @see TreeMap
+ 107:  * @see Hashtable
+ 108:  * @since 1.4
+ 109:  * @status updated to 1.4
+ 110:  */
+ 111: public class LinkedHashMap<K,V> extends HashMap<K,V>
+ 112: {
+ 113:   /**
+ 114:    * Compatible with JDK 1.4.
+ 115:    */
+ 116:   private static final long serialVersionUID = 3801124242820219131L;
+ 117: 
+ 118:   /**
+ 119:    * The oldest Entry to begin iteration at.
+ 120:    */
+ 121:   transient LinkedHashEntry root;
+ 122: 
+ 123:   /**
+ 124:    * The iteration order of this linked hash map: <code>true</code> for
+ 125:    * access-order, <code>false</code> for insertion-order.
+ 126:    *
+ 127:    * @serial true for access order traversal
+ 128:    */
+ 129:   final boolean accessOrder;
+ 130: 
+ 131:   /**
+ 132:    * Class to represent an entry in the hash table. Holds a single key-value
+ 133:    * pair and the doubly-linked insertion order list.
+ 134:    */
+ 135:   class LinkedHashEntry<K,V> extends HashEntry<K,V>
+ 136:   {
+ 137:     /**
+ 138:      * The predecessor in the iteration list. If this entry is the root
+ 139:      * (eldest), pred points to the newest entry.
+ 140:      */
+ 141:     LinkedHashEntry<K,V> pred;
+ 142: 
+ 143:     /** The successor in the iteration list, null if this is the newest. */
+ 144:     LinkedHashEntry<K,V> succ;
+ 145: 
+ 146:     /**
+ 147:      * Simple constructor.
+ 148:      *
+ 149:      * @param key the key
+ 150:      * @param value the value
+ 151:      */
+ 152:     LinkedHashEntry(K key, V value)
+ 153:     {
+ 154:       super(key, value);
+ 155:       if (root == null)
+ 156:         {
+ 157:           root = this;
+ 158:           pred = this;
+ 159:         }
+ 160:       else
+ 161:         {
+ 162:           pred = root.pred;
+ 163:           pred.succ = this;
+ 164:           root.pred = this;
+ 165:         }
+ 166:     }
+ 167: 
+ 168:     /**
+ 169:      * Called when this entry is accessed via put or get. This version does
+ 170:      * the necessary bookkeeping to keep the doubly-linked list in order,
+ 171:      * after moving this element to the newest position in access order.
+ 172:      */
+ 173:     void access()
+ 174:     {
+ 175:       if (accessOrder && succ != null)
+ 176:         {
+ 177:           modCount++;
+ 178:           if (this == root)
+ 179:             {
+ 180:               root = succ;
+ 181:               pred.succ = this;
+ 182:               succ = null;
+ 183:             }
+ 184:           else
+ 185:             {
+ 186:               pred.succ = succ;
+ 187:               succ.pred = pred;
+ 188:               succ = null;
+ 189:               pred = root.pred;
+ 190:               pred.succ = this;
+ 191:           root.pred = this;
+ 192:             }
+ 193:         }
+ 194:     }
+ 195: 
+ 196:     /**
+ 197:      * Called when this entry is removed from the map. This version does
+ 198:      * the necessary bookkeeping to keep the doubly-linked list in order.
+ 199:      *
+ 200:      * @return the value of this key as it is removed
+ 201:      */
+ 202:     V cleanup()
+ 203:     {
+ 204:       if (this == root)
+ 205:         {
+ 206:           root = succ;
+ 207:           if (succ != null)
+ 208:             succ.pred = pred;
+ 209:         }
+ 210:       else if (succ == null)
+ 211:         {
+ 212:           pred.succ = null;
+ 213:           root.pred = pred;
+ 214:         }
+ 215:       else
+ 216:         {
+ 217:           pred.succ = succ;
+ 218:           succ.pred = pred;
+ 219:         }
+ 220:       return value;
+ 221:     }
+ 222:   } // class LinkedHashEntry
+ 223: 
+ 224:   /**
+ 225:    * Construct a new insertion-ordered LinkedHashMap with the default
+ 226:    * capacity (11) and the default load factor (0.75).
+ 227:    */
+ 228:   public LinkedHashMap()
+ 229:   {
+ 230:     super();
+ 231:     accessOrder = false;
+ 232:   }
+ 233: 
+ 234:   /**
+ 235:    * Construct a new insertion-ordered LinkedHashMap from the given Map,
+ 236:    * with initial capacity the greater of the size of <code>m</code> or
+ 237:    * the default of 11.
+ 238:    * <p>
+ 239:    *
+ 240:    * Every element in Map m will be put into this new HashMap, in the
+ 241:    * order of m's iterator.
+ 242:    *
+ 243:    * @param m a Map whose key / value pairs will be put into
+ 244:    *          the new HashMap.  <b>NOTE: key / value pairs
+ 245:    *          are not cloned in this constructor.</b>
+ 246:    * @throws NullPointerException if m is null
+ 247:    */
+ 248:   public LinkedHashMap(Map<? extends K, ? extends V> m)
+ 249:   {
+ 250:     super(m);
+ 251:     accessOrder = false;
+ 252:   }
+ 253: 
+ 254:   /**
+ 255:    * Construct a new insertion-ordered LinkedHashMap with a specific
+ 256:    * inital capacity and default load factor of 0.75.
+ 257:    *
+ 258:    * @param initialCapacity the initial capacity of this HashMap (&gt;= 0)
+ 259:    * @throws IllegalArgumentException if (initialCapacity &lt; 0)
+ 260:    */
+ 261:   public LinkedHashMap(int initialCapacity)
+ 262:   {
+ 263:     super(initialCapacity);
+ 264:     accessOrder = false;
+ 265:   }
+ 266: 
+ 267:   /**
+ 268:    * Construct a new insertion-orderd LinkedHashMap with a specific
+ 269:    * inital capacity and load factor.
+ 270:    *
+ 271:    * @param initialCapacity the initial capacity (&gt;= 0)
+ 272:    * @param loadFactor the load factor (&gt; 0, not NaN)
+ 273:    * @throws IllegalArgumentException if (initialCapacity &lt; 0) ||
+ 274:    *                                     ! (loadFactor &gt; 0.0)
+ 275:    */
+ 276:   public LinkedHashMap(int initialCapacity, float loadFactor)
+ 277:   {
+ 278:     super(initialCapacity, loadFactor);
+ 279:     accessOrder = false;
+ 280:   }
+ 281: 
+ 282:   /**
+ 283:    * Construct a new LinkedHashMap with a specific inital capacity, load
+ 284:    * factor, and ordering mode.
+ 285:    *
+ 286:    * @param initialCapacity the initial capacity (&gt;=0)
+ 287:    * @param loadFactor the load factor (&gt;0, not NaN)
+ 288:    * @param accessOrder true for access-order, false for insertion-order
+ 289:    * @throws IllegalArgumentException if (initialCapacity &lt; 0) ||
+ 290:    *                                     ! (loadFactor &gt; 0.0)
+ 291:    */
+ 292:   public LinkedHashMap(int initialCapacity, float loadFactor,
+ 293:                        boolean accessOrder)
+ 294:   {
+ 295:     super(initialCapacity, loadFactor);
+ 296:     this.accessOrder = accessOrder;
+ 297:   }
+ 298: 
+ 299:   /**
+ 300:    * Clears the Map so it has no keys. This is O(1).
+ 301:    */
+ 302:   public void clear()
+ 303:   {
+ 304:     super.clear();
+ 305:     root = null;
+ 306:   }
+ 307: 
+ 308:   /**
+ 309:    * Returns <code>true</code> if this HashMap contains a value
+ 310:    * <code>o</code>, such that <code>o.equals(value)</code>.
+ 311:    *
+ 312:    * @param value the value to search for in this HashMap
+ 313:    * @return <code>true</code> if at least one key maps to the value
+ 314:    */
+ 315:   public boolean containsValue(Object value)
+ 316:   {
+ 317:     LinkedHashEntry e = root;
+ 318:     while (e != null)
+ 319:       {
+ 320:         if (equals(value, e.value))
+ 321:           return true;
+ 322:         e = e.succ;
+ 323:       }
+ 324:     return false;
+ 325:   }
+ 326: 
+ 327:   /**
+ 328:    * Return the value in this Map associated with the supplied key,
+ 329:    * or <code>null</code> if the key maps to nothing.  If this is an
+ 330:    * access-ordered Map and the key is found, this performs structural
+ 331:    * modification, moving the key to the newest end of the list. NOTE:
+ 332:    * Since the value could also be null, you must use containsKey to
+ 333:    * see if this key actually maps to something.
+ 334:    *
+ 335:    * @param key the key for which to fetch an associated value
+ 336:    * @return what the key maps to, if present
+ 337:    * @see #put(Object, Object)
+ 338:    * @see #containsKey(Object)
+ 339:    */
+ 340:   public V get(Object key)
+ 341:   {
+ 342:     int idx = hash(key);
+ 343:     HashEntry<K,V> e = buckets[idx];
+ 344:     while (e != null)
+ 345:       {
+ 346:         if (equals(key, e.key))
+ 347:           {
+ 348:             e.access();
+ 349:             return e.value;
+ 350:           }
+ 351:         e = e.next;
+ 352:       }
+ 353:     return null;
+ 354:   }
+ 355: 
+ 356:   /**
+ 357:    * Returns <code>true</code> if this map should remove the eldest entry.
+ 358:    * This method is invoked by all calls to <code>put</code> and
+ 359:    * <code>putAll</code> which place a new entry in the map, providing
+ 360:    * the implementer an opportunity to remove the eldest entry any time
+ 361:    * a new one is added.  This can be used to save memory usage of the
+ 362:    * hashtable, as well as emulating a cache, by deleting stale entries.
+ 363:    * <p>
+ 364:    *
+ 365:    * For example, to keep the Map limited to 100 entries, override as follows:
+ 366:    * <pre>
+ 367:    * private static final int MAX_ENTRIES = 100;
+ 368:    * protected boolean removeEldestEntry(Map.Entry eldest)
+ 369:    * {
+ 370:    *   return size() &gt; MAX_ENTRIES;
+ 371:    * }
+ 372:    * </pre><p>
+ 373:    *
+ 374:    * Typically, this method does not modify the map, but just uses the
+ 375:    * return value as an indication to <code>put</code> whether to proceed.
+ 376:    * However, if you override it to modify the map, you must return false
+ 377:    * (indicating that <code>put</code> should leave the modified map alone),
+ 378:    * or you face unspecified behavior.  Remember that in access-order mode,
+ 379:    * even calling <code>get</code> is a structural modification, but using
+ 380:    * the collections views (such as <code>keySet</code>) is not.
+ 381:    * <p>
+ 382:    *
+ 383:    * This method is called after the eldest entry has been inserted, so
+ 384:    * if <code>put</code> was called on a previously empty map, the eldest
+ 385:    * entry is the one you just put in! The default implementation just
+ 386:    * returns <code>false</code>, so that this map always behaves like
+ 387:    * a normal one with unbounded growth.
+ 388:    *
+ 389:    * @param eldest the eldest element which would be removed if this
+ 390:    *        returns true. For an access-order map, this is the least
+ 391:    *        recently accessed; for an insertion-order map, this is the
+ 392:    *        earliest element inserted.
+ 393:    * @return true if <code>eldest</code> should be removed
+ 394:    */
+ 395:   protected boolean removeEldestEntry(Map.Entry<K,V> eldest)
+ 396:   {
+ 397:     return false;
+ 398:   }
+ 399: 
+ 400:   /**
+ 401:    * Helper method called by <code>put</code>, which creates and adds a
+ 402:    * new Entry, followed by performing bookkeeping (like removeEldestEntry).
+ 403:    *
+ 404:    * @param key the key of the new Entry
+ 405:    * @param value the value
+ 406:    * @param idx the index in buckets where the new Entry belongs
+ 407:    * @param callRemove whether to call the removeEldestEntry method
+ 408:    * @see #put(Object, Object)
+ 409:    * @see #removeEldestEntry(Map.Entry)
+ 410:    * @see LinkedHashEntry#LinkedHashEntry(Object, Object)
+ 411:    */
+ 412:   void addEntry(K key, V value, int idx, boolean callRemove)
+ 413:   {
+ 414:     LinkedHashEntry e = new LinkedHashEntry(key, value);
+ 415:     e.next = buckets[idx];
+ 416:     buckets[idx] = e;
+ 417:     if (callRemove && removeEldestEntry(root))
+ 418:       remove(root.key);
+ 419:   }
+ 420: 
+ 421:   /**
+ 422:    * Helper method, called by clone() to reset the doubly-linked list.
+ 423:    *
+ 424:    * @param m the map to add entries from
+ 425:    * @see #clone()
+ 426:    */
+ 427:   void putAllInternal(Map m)
+ 428:   {
+ 429:     root = null;
+ 430:     super.putAllInternal(m);
+ 431:   }
+ 432: 
+ 433:   /**
+ 434:    * Generates a parameterized iterator. This allows traversal to follow
+ 435:    * the doubly-linked list instead of the random bin order of HashMap.
+ 436:    *
+ 437:    * @param type {@link #KEYS}, {@link #VALUES}, or {@link #ENTRIES}
+ 438:    * @return the appropriate iterator
+ 439:    */
+ 440:   Iterator iterator(final int type)
+ 441:   {
+ 442:     return new Iterator()
+ 443:     {
+ 444:       /** The current Entry. */
+ 445:       LinkedHashEntry current = root;
+ 446: 
+ 447:       /** The previous Entry returned by next(). */
+ 448:       LinkedHashEntry last;
+ 449: 
+ 450:       /** The number of known modifications to the backing Map. */
+ 451:       int knownMod = modCount;
+ 452: 
+ 453:       /**
+ 454:        * Returns true if the Iterator has more elements.
+ 455:        *
+ 456:        * @return true if there are more elements
+ 457:        */
+ 458:       public boolean hasNext()
+ 459:       {
+ 460:         return current != null;
+ 461:       }
+ 462: 
+ 463:       /**
+ 464:        * Returns the next element in the Iterator's sequential view.
+ 465:        *
+ 466:        * @return the next element
+ 467:        * @throws ConcurrentModificationException if the HashMap was modified
+ 468:        * @throws NoSuchElementException if there is none
+ 469:        */
+ 470:       public Object next()
+ 471:       {
+ 472:         if (knownMod != modCount)
+ 473:           throw new ConcurrentModificationException();
+ 474:         if (current == null)
+ 475:           throw new NoSuchElementException();
+ 476:         last = current;
+ 477:         current = current.succ;
+ 478:         return type == VALUES ? last.value : type == KEYS ? last.key : last;
+ 479:       }
+ 480:       
+ 481:       /**
+ 482:        * Removes from the backing HashMap the last element which was fetched
+ 483:        * with the <code>next()</code> method.
+ 484:        *
+ 485:        * @throws ConcurrentModificationException if the HashMap was modified
+ 486:        * @throws IllegalStateException if called when there is no last element
+ 487:        */
+ 488:       public void remove()
+ 489:       {
+ 490:         if (knownMod != modCount)
+ 491:           throw new ConcurrentModificationException();
+ 492:         if (last == null)
+ 493:           throw new IllegalStateException();
+ 494:         LinkedHashMap.this.remove(last.key);
+ 495:         last = null;
+ 496:         knownMod++;
+ 497:       }
+ 498:     };
+ 499:   }
+ 500: } // class LinkedHashMap
