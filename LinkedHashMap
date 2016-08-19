@@ -148,4 +148,8 @@ public class LinkedHashMap<K,V>
         e.addBefore(header);
         size++;
     }
+    
+    protected boolean removeEldestEntry(Map.Entry<K,V> eldest) {
+        return false;
+    }    
 }
