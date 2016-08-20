@@ -66,48 +66,6 @@ public class TreeSet<E> extends AbstractSet<E>
         m.clear();
     }
 
-    public  boolean addAll(Collection<? extends E> c) {
-        if (m.size()==0 && c.size() > 0 &&
-            c instanceof SortedSet &&
-            m instanceof TreeMap) {
-            SortedSet<? extends E> set = (SortedSet<? extends E>) c;
-            TreeMap<E,Object> map = (TreeMap<E, Object>) m;
-            Comparator<? super E> cc = (Comparator<? super E>) set.comparator();
-            Comparator<? super E> mc = map.comparator();
-            if (cc==mc || (cc != null && cc.equals(mc))) {
-                map.addAllForTreeSet(set, PRESENT);
-                return true;
-            }
-        }
-        return super.addAll(c);
-    }
-
-    public NavigableSet<E> subSet(E fromElement, boolean fromInclusive,
-                                  E toElement,   boolean toInclusive) {
-        return new TreeSet<E>(m.subMap(fromElement, fromInclusive,
-                                       toElement,   toInclusive));
-    }
-
-    public NavigableSet<E> headSet(E toElement, boolean inclusive) {
-        return new TreeSet<E>(m.headMap(toElement, inclusive));
-    }
-
-    public NavigableSet<E> tailSet(E fromElement, boolean inclusive) {
-        return new TreeSet<E>(m.tailMap(fromElement, inclusive));
-    }
-
-    public SortedSet<E> subSet(E fromElement, E toElement) {
-        return subSet(fromElement, true, toElement, false);
-    }
-
-    public SortedSet<E> headSet(E toElement) {
-        return headSet(toElement, false);
-    }
-
-    public SortedSet<E> tailSet(E fromElement) {
-        return tailSet(fromElement, true);
-    }
-
     public Comparator<? super E> comparator() {
         return m.comparator();
     }
