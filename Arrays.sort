@@ -9,7 +9,6 @@ public class Arrays {
     }
 
     private static void sort1(int x[], int off, int len) {
-        // Insertion sort on smallest arrays
         if (len < 7) {
             for (int i=off; i<len+off; i++)
                 for (int j=i; j>off && x[j-1]>x[j]; j--)
@@ -17,7 +16,6 @@ public class Arrays {
             return;
         }
 
-        // Choose a partition element, v
         int m = off + (len >> 1);       // Small arrays, middle element
         if (len > 7) {
             int l = off;
@@ -32,7 +30,6 @@ public class Arrays {
         }
         int v = x[m];
 
-        // Establish Invariant: v* (<v)* (>v)* v*
         int a = off, b = a, c = off + len - 1, d = c;
         while(true) {
             while (b <= c && x[b] <= v) {
@@ -50,12 +47,10 @@ public class Arrays {
             swap(x, b++, c--);
         }
 
-        // Swap partition elements back to middle
         int s, n = off + len;
         s = Math.min(a-off, b-a  );  vecswap(x, off, b-s, s);
         s = Math.min(d-c,   n-d-1);  vecswap(x, b,   n-s, s);
 
-        // Recursively sort non-partition-elements
         if ((s = b-a) > 1)
             sort1(x, off, s);
         if ((s = d-c) > 1)
@@ -93,7 +88,6 @@ public class Arrays {
                                   int off) {
         int length = high - low;
 
-        // Insertion sort on smallest arrays
         if (length < INSERTIONSORT_THRESHOLD) {
             for (int i=low; i<high; i++)
                 for (int j=i; j>low &&
